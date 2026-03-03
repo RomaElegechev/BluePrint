@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBlock</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">CodeBlock</div>
+        <div class="controls">
+            <button class="btn btn-run" onclick="runProgram()">Запустить</button>
+            <button class="btn btn-reset" onclick="resetProgram()">Сброс</button>
+            <button class="btn btn-clear" onclick="clearAll()">Очистить</button>
+        </div>
+    </div>
+
+    <div class="main-area">
+        <div class="node-palette">
+            <div class="palette-header">
+                <h3>Блоки</h3>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Переменные</div>
+                <div class="node-item" draggable="true" data-node-type="var-declare">
+                    Создать переменную
+                </div>
+                <div class="node-item" draggable="true" data-node-type="var-assign">
+                    Присвоить значение
+                </div>
+                <div class="node-item" draggable="true" data-node-type="var-get">
+                    Получить переменную
+                </div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Арифметика</div>
+                <div class="node-item" draggable="true" data-node-type="math-add">
+                    Сложение
+                </div>
+                <div class="node-item" draggable="true" data-node-type="math-sub">
+                    Вычитание
+                </div>
+                <div class="node-item" draggable="true" data-node-type="math-mul">
+                    Умножение
+                </div>
+                <div class="node-item" draggable="true" data-node-type="math-div">
+                    Деление
+                </div>
+                <div class="node-item" draggable="true" data-node-type="math-mod">
+                    Остаток
+                </div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Сравнение</div>
+                <div class="node-item" draggable="true" data-node-type="compare-eq">
+                    Равно
+                </div>
+                <div class="node-item" draggable="true" data-node-type="compare-neq">
+                    Не равно
+                </div>
+                <div class="node-item" draggable="true" data-node-type="compare-gt">
+                    Больше
+                </div>
+                <div class="node-item" draggable="true" data-node-type="compare-lt">
+                    Меньше
+                </div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Управление</div>
+                <div class="node-item" draggable="true" data-node-type="control-if">
+                    Если
+                </div>
+                <div class="node-item" draggable="true" data-node-type="control-while">
+                    Цикл
+                </div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Вывод</div>
+                <div class="node-item" draggable="true" data-node-type="print">
+                    Вывести
+                </div>
+            </div>
+        </div>
+
+        <div class="workspace" id="workspace" ondrop="drop(event)" ondragover="allowDrop(event)">
+            <div class="workspace-placeholder">Перетащите блоки сюда</div>
+        </div>
+
+        <div class="info-panel">
+            <div class="panel-tabs">
+                <button class="tab active" data-tab="variables">Переменные</button>
+                <button class="tab" data-tab="output">Вывод</button>
+                <button class="tab" data-tab="errors">Ошибки</button>
+            </div>
+
+            <div class="tab-content active" id="variablesTab">
+                <div id="variablesList"></div>
+            </div>
+
+            <div class="tab-content" id="outputTab">
+                <div id="outputConsole"></div>
+            </div>
+
+            <div class="tab-content" id="errorsTab">
+                <div id="errorsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div>Блоков: <span id="nodeCount">0</span></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

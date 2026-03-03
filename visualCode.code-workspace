@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "../../../../visualCode"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "website"
+	}
+}
