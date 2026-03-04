@@ -1,15 +1,15 @@
 let variables = {};
 let output = [];
 let errors = [];
-let blocks = [];               
-let connections = [];           
-let drawingLine = null;        
-let selectedPort = null;        
+let blocks = [];
+let connections = [];
+let drawingLine = null;
+let selectedPort = null;
 
 const blockPortsConfig = {
     'var-declare':  { inputs: 0, outputs: 1 },
-    'var-assign':   { inputs: 1, outputs: 0 },
-    'var-get':      { inputs: 0, outputs: 1 },
+    'var-assign':   { inputs: 2, outputs: 1 },
+    'var-get':      { inputs: 1, outputs: 1 },
     'math-add':     { inputs: 2, outputs: 1 },
     'math-sub':     { inputs: 2, outputs: 1 },
     'math-mul':     { inputs: 2, outputs: 1 },
@@ -19,8 +19,10 @@ const blockPortsConfig = {
     'compare-neq':  { inputs: 2, outputs: 1 },
     'compare-gt':   { inputs: 2, outputs: 1 },
     'compare-lt':   { inputs: 2, outputs: 1 },
+    'compare-ge':   { inputs: 2, outputs: 1 },
+    'compare-le':   { inputs: 2, outputs: 1 },
     'control-if':   { inputs: 1, outputs: 2 },
-    'control-while':{ inputs: 1, outputs: 1 },
+    'control-begin': { inputs: 0, outputs: 1 },
     'print':        { inputs: 1, outputs: 0 }
 };
 
@@ -62,39 +64,48 @@ function drop(event) {
     event.preventDefault();
     const workspace = document.getElementById('workspace');
     workspace.classList.remove('drag-over');
-
+    
     const nodeType = event.dataTransfer.getData('text/plain');
     if (!nodeType) return;
-
-    const rect = workspace.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    createBlock(nodeType, x, y);
+    
+    const target = event.target.closest('.then-blocks, .else-blocks, .begin-blocks');
+    
+    if (target) {
+        const containerRect = target.getBoundingClientRect();
+        const x = event.clientX - containerRect.left;
+        const y = event.clientY - containerRect.top;
+        createBlock(nodeType, x, y, target.id);
+    } else {
+        const rect = workspace.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        createBlock(nodeType, x, y);
+    }
 }
 
-function createBlock(type, x, y) {
+function createBlock(type, x, y, containerId = null) {
     const workspace = document.getElementById('workspace');
     const blockId = 'block_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
+    
     const placeholder = workspace.querySelector('.workspace-placeholder');
     if (placeholder) {
         placeholder.remove();
     }
-
+    
     const block = document.createElement('div');
     block.className = 'workspace-block';
     block.id = blockId;
-    block.style.position = 'absolute';
+    block.style.position = containerId ? 'relative' : 'absolute';
     block.style.left = x + 'px';
     block.style.top = y + 'px';
-
+    
     let title = '';
     let content = '';
+    
     switch(type) {
         case 'var-declare':
             title = 'Создать переменную';
-            content = '<input type="text" value="x, y" placeholder="имена" onchange="updateBlockData(\'' + blockId + '\', \'names\', this.value)">';
+            content = '<input type="text" value="x, y" placeholder="имена через запятую" onchange="updateBlockData(\'' + blockId + '\', \'names\', this.value)">';
             break;
         case 'var-assign':
             title = 'Присвоить значение';
@@ -140,13 +151,37 @@ function createBlock(type, x, y) {
             title = 'Меньше';
             content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> < <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
             break;
+        case 'compare-ge':
+            title = 'Больше или равно';
+            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> >= <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            break;
+        case 'compare-le':
+            title = 'Меньше или равно';
+            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> <= <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            break;
         case 'control-if':
             title = 'Если';
-            content = '<input type="text" value="условие" placeholder="условие" onchange="updateBlockData(\'' + blockId + '\', \'condition\', this.value)">';
+            content = `
+                <div class="if-condition">
+                    <input type="text" value="условие" placeholder="условие" onchange="updateBlockData('${blockId}', 'condition', this.value)">
+                </div>
+                <div class="if-then">
+                    <div class="then-label">Тогда:</div>
+                    <div class="then-blocks" id="then_${blockId}"></div>
+                </div>
+                <div class="if-else">
+                    <div class="else-label">Иначе:</div>
+                    <div class="else-blocks" id="else_${blockId}"></div>
+                </div>
+            `;
             break;
-        case 'control-while':
-            title = 'Цикл';
-            content = '<input type="text" value="условие" placeholder="условие" onchange="updateBlockData(\'' + blockId + '\', \'condition\', this.value)">';
+        case 'control-begin':
+            title = 'Begin-End';
+            content = `
+                <div class="begin-blocks" id="body_${blockId}">
+                    <div style="color:#999; text-align:center; padding:10px;">Перетащите блоки сюда</div>
+                </div>
+            `;
             break;
         case 'print':
             title = 'Вывести';
@@ -156,36 +191,55 @@ function createBlock(type, x, y) {
             title = type;
             content = '';
     }
-
+    
     block.innerHTML = `
         <div class="block-header" onmousedown="startDragBlock('${blockId}', event)">
             <span>${title}</span>
             <button class="delete-btn" onclick="deleteBlock('${blockId}')">✕</button>
         </div>
-        <div class="block-content" id="content_${blockId}">
+        <div class="block-content">
             ${content}
         </div>
     `;
-
-    workspace.appendChild(block);
-
+    
+    if (containerId) {
+        const container = document.getElementById(containerId);
+        container.appendChild(block);
+        const placeholder = container.querySelector('div[style*="color:#999"]');
+        if (placeholder) placeholder.remove();
+    } else {
+        workspace.appendChild(block);
+    }
+    
     addPortsToBlock(block, type);
-
+    
     const blockData = {
         id: blockId,
         type: type,
-        data: {}
+        data: {},
+        value: undefined,
+        executed: false
     };
     blocks.push(blockData);
-
+    
     updateUI();
 }
 
 function addPortsToBlock(block, type) {
     const config = blockPortsConfig[type] || { inputs: 1, outputs: 1 };
+    
+    const hitArea = document.createElement('div');
+    hitArea.style.position = 'absolute';
+    hitArea.style.top = '0';
+    hitArea.style.left = '0';
+    hitArea.style.width = '100%';
+    hitArea.style.height = '100%';
+    hitArea.style.pointerEvents = 'none';
+    block.appendChild(hitArea);
+    
     const portsContainer = document.createElement('div');
     portsContainer.className = 'block-ports';
-
+    
     for (let i = 0; i < config.inputs; i++) {
         const port = document.createElement('div');
         port.className = `port port-input port-left`;
@@ -194,8 +248,16 @@ function addPortsToBlock(block, type) {
         port.setAttribute('data-port-index', i);
         const topPercent = (i + 0.5) / config.inputs * 100;
         port.style.top = topPercent + '%';
-        port.style.transform = 'translateY(-50%)'; 
+        port.title = `Вход ${i + 1}`;
         port.addEventListener('mousedown', onPortMouseDown);
+        port.addEventListener('mouseenter', () => {
+            port.style.transform = 'scale(1.3)';
+            port.style.backgroundColor = '#e3f2fd';
+        });
+        port.addEventListener('mouseleave', () => {
+            port.style.transform = 'scale(1)';
+            port.style.backgroundColor = 'white';
+        });
         portsContainer.appendChild(port);
     }
 
@@ -207,8 +269,16 @@ function addPortsToBlock(block, type) {
         port.setAttribute('data-port-index', i);
         const topPercent = (i + 0.5) / config.outputs * 100;
         port.style.top = topPercent + '%';
-        port.style.transform = 'translateY(-50%)';
+        port.title = `Выход ${i + 1}`;
         port.addEventListener('mousedown', onPortMouseDown);
+        port.addEventListener('mouseenter', () => {
+            port.style.transform = 'scale(1.3)';
+            port.style.backgroundColor = '#ffebee';
+        });
+        port.addEventListener('mouseleave', () => {
+            port.style.transform = 'scale(1)';
+            port.style.backgroundColor = 'white';
+        });
         portsContainer.appendChild(port);
     }
 
@@ -222,7 +292,9 @@ function onPortMouseDown(event) {
     const portType = port.dataset.portType;
     const portIndex = parseInt(port.dataset.portIndex);
 
-    if (drawingLine) return;
+    if (drawingLine) {
+        return;
+    }
 
     selectedPort = { blockId, portType, portIndex, element: port };
 
@@ -232,8 +304,8 @@ function onPortMouseDown(event) {
     const svg = document.getElementById('connections-svg');
     const tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     tempPath.setAttribute('stroke', '#999');
-    tempPath.setAttribute('stroke-width', '2');
-    tempPath.setAttribute('stroke-dasharray', '5,5');
+    tempPath.setAttribute('stroke-width', '3');
+    tempPath.setAttribute('stroke-dasharray', '8,8');
     tempPath.setAttribute('fill', 'none');
     tempPath.setAttribute('pointer-events', 'none');
     tempPath.classList.add('temp-path');
@@ -263,7 +335,7 @@ function onMouseMoveDrawing(event) {
 
     const startX = drawingLine.startX;
     const startY = drawingLine.startY;
-    const pathData = `M ${startX},${startY} C ${startX + 50},${startY} ${currentX - 50},${currentY} ${currentX},${currentY}`;
+    const pathData = `M ${startX},${startY} C ${startX + 80},${startY} ${currentX - 80},${currentY} ${currentX},${currentY}`;
     drawingLine.tempPath.setAttribute('d', pathData);
 }
 
@@ -273,11 +345,30 @@ function onMouseUpDrawing(event) {
         return;
     }
 
-    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
-    if (targetElement && targetElement.classList.contains('port')) {
-        const targetBlockId = targetElement.dataset.blockId;
-        const targetPortType = targetElement.dataset.portType;
-        const targetPortIndex = parseInt(targetElement.dataset.portIndex);
+    const threshold = 20;
+    let targetPort = null;
+    
+    const allPorts = document.querySelectorAll('.port');
+    const mouseX = event.clientX;
+    const mouseY = event.clientY;
+    
+    let minDistance = threshold;
+    allPorts.forEach(port => {
+        const rect = port.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const distance = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
+        
+        if (distance < minDistance) {
+            minDistance = distance;
+            targetPort = port;
+        }
+    });
+
+    if (targetPort) {
+        const targetBlockId = targetPort.dataset.blockId;
+        const targetPortType = targetPort.dataset.portType;
+        const targetPortIndex = parseInt(targetPort.dataset.portIndex);
 
         if (targetBlockId !== drawingLine.fromBlock &&
             ((drawingLine.fromPortType === 'output' && targetPortType === 'input') ||
@@ -296,14 +387,10 @@ function onMouseUpDrawing(event) {
                 toPortIndex = drawingLine.fromPortIndex;
             }
 
-            connections = connections.filter(conn => {
-                if (conn.toBlock === toBlock && conn.toPortIndex === toPortIndex) {
-                    const oldPath = document.getElementById(`conn-${conn.id}`);
-                    if (oldPath) oldPath.remove();
-                    return false;
-                }
-                return true;
-            });
+            const existingConnection = connections.find(c => c.toBlock === toBlock && c.toPortIndex === toPortIndex);
+            if (existingConnection) {
+                removeConnection(existingConnection.id);
+            }
 
             const connId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             const newConn = {
@@ -347,16 +434,21 @@ function getPortPosition(blockId, portType, portIndex) {
 function drawConnection(conn) {
     const svg = document.getElementById('connections-svg');
     const fromPos = getPortPosition(conn.fromBlock, 'output', conn.fromPortIndex);
-    const toPos = getPortPosition(conn.toBlock, 'input', conn.toPortIndex);     
+    const toPos = getPortPosition(conn.toBlock, 'input', conn.toPortIndex);
 
-    if (!fromPos || !toPos) return; 
+    if (!fromPos || !toPos) return;
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('id', `conn-${conn.id}`);
-    const d = `M ${fromPos.x},${fromPos.y} C ${fromPos.x + 50},${fromPos.y} ${toPos.x - 50},${toPos.y} ${toPos.x},${toPos.y}`;
+    
+    const dx = toPos.x - fromPos.x;
+    const ctrl1X = fromPos.x + dx * 0.25;
+    const ctrl2X = fromPos.x + dx * 0.75;
+    
+    const d = `M ${fromPos.x},${fromPos.y} C ${ctrl1X},${fromPos.y} ${ctrl2X},${toPos.y} ${toPos.x},${toPos.y}`;
     path.setAttribute('d', d);
-    path.setAttribute('stroke', '#000');
-    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke', '#333');
+    path.setAttribute('stroke-width', '2.5');
     path.setAttribute('fill', 'none');
     path.setAttribute('pointer-events', 'auto');
     path.setAttribute('data-conn-id', conn.id);
@@ -366,7 +458,21 @@ function drawConnection(conn) {
         const connId = this.dataset.connId;
         removeConnection(connId);
     });
-
+    
+    const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hitPath.setAttribute('d', d);
+    hitPath.setAttribute('stroke', 'transparent');
+    hitPath.setAttribute('stroke-width', '12');
+    hitPath.setAttribute('fill', 'none');
+    hitPath.setAttribute('pointer-events', 'auto');
+    hitPath.setAttribute('data-conn-id', conn.id);
+    hitPath.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const connId = this.dataset.connId;
+        removeConnection(connId);
+    });
+    
+    svg.appendChild(hitPath);
     svg.appendChild(path);
 }
 
@@ -374,22 +480,18 @@ function removeConnection(connId) {
     connections = connections.filter(c => c.id !== connId);
     const path = document.getElementById(`conn-${connId}`);
     if (path) path.remove();
+    const hitPaths = document.querySelectorAll(`[data-conn-id="${connId}"]`);
+    hitPaths.forEach(p => p.remove());
 }
 
 function removeConnectionsWithBlock(blockId) {
-    connections = connections.filter(conn => {
-        if (conn.fromBlock === blockId || conn.toBlock === blockId) {
-            const path = document.getElementById(`conn-${conn.id}`);
-            if (path) path.remove();
-            return false;
-        }
-        return true;
-    });
+    const toRemove = connections.filter(conn => conn.fromBlock === blockId || conn.toBlock === blockId);
+    toRemove.forEach(conn => removeConnection(conn.id));
 }
 
 function updateAllConnections() {
     const svg = document.getElementById('connections-svg');
-    svg.innerHTML = ''; 
+    svg.innerHTML = '';
     connections.forEach(conn => drawConnection(conn));
 }
 
@@ -437,112 +539,305 @@ function updateBlockData(blockId, field, value) {
 function runProgram() {
     output = [];
     errors = [];
-    output.push('Запуск программы...');
+    
+    const validationErrors = validateConnections();
+    if (validationErrors.length > 0) {
+        errors = validationErrors;
+        updateOutput();
+        updateErrors();
+        return;
+    }
+    
     blocks.forEach(block => {
+        block.value = undefined;
+        block.executed = false;
+    });
+    
+    output.push('🚀 Запуск программы...');
+    
+    const graph = buildDependencyGraph();
+    const executionOrder = topologicalSort(graph);
+    
+    if (executionOrder === null) {
+        errors.push('❌ Обнаружен цикл в зависимостях!');
+        updateOutput();
+        updateErrors();
+        return;
+    }
+    
+    executionOrder.forEach(blockId => {
+        const block = blocks.find(b => b.id === blockId);
+        if (!block || block.executed) return;
+        
         try {
-            executeBlock(block);
+            const inputValues = getInputValues(blockId);
+            executeBlock(block, inputValues);
+            block.executed = true;
         } catch (e) {
-            errors.push('Ошибка: ' + e.message);
+            errors.push(`❌ Ошибка в блоке ${block.id}: ${e.message}`);
         }
     });
-    output.push('Готово');
+    
+    output.push('✅ Готово');
     updateOutput();
     updateErrors();
+    updateVariables();
 }
 
-function executeBlock(block) {
+function validateConnections() {
+    const errors = [];
+    
+    blocks.forEach(block => {
+        const config = blockPortsConfig[block.type];
+        if (!config) return;
+        
+        const blockElement = document.getElementById(block.id);
+        if (!blockElement) return;
+        
+        const inputs = blockElement.querySelectorAll('input');
+        
+        for (let i = 0; i < config.inputs; i++) {
+            const hasConnection = connections.some(c => c.toBlock === block.id && c.toPortIndex === i);
+            
+            if (block.type === 'var-assign') {
+                if (i === 1 && !hasConnection) {
+                    if (inputs[1] && inputs[1].value.trim() !== '') {
+                        continue;
+                    } else {
+                        errors.push(`❌ Блок "Присвоить значение" должен иметь значение (либо подключение, либо заполненное поле)`);
+                    }
+                }
+                continue;
+            }
+            
+            const requiredTypes = ['math-add', 'math-sub', 'math-mul', 'math-div', 'math-mod',
+                                  'compare-eq', 'compare-neq', 'compare-gt', 'compare-lt',
+                                  'compare-ge', 'compare-le', 'print'];
+            
+            if (requiredTypes.includes(block.type) && !hasConnection) {
+                const inputField = inputs[i];
+                if (inputField && inputField.value.trim() !== '') {
+                    continue;
+                } else {
+                    const portNames = ['первый', 'второй'];
+                    errors.push(`❌ Блок "${block.type}" требует значение для ${portNames[i] || i+1} входа (подключите или введите число)`);
+                }
+            }
+        }
+    });
+    
+    return errors;
+}
+
+function buildDependencyGraph() {
+    const graph = {};
+    
+    blocks.forEach(block => {
+        graph[block.id] = {
+            id: block.id,
+            dependencies: [],
+            dependents: []
+        };
+    });
+    
+    connections.forEach(conn => {
+        if (graph[conn.toBlock] && graph[conn.fromBlock]) {
+            graph[conn.toBlock].dependencies.push(conn.fromBlock);
+            graph[conn.fromBlock].dependents.push(conn.toBlock);
+        }
+    });
+    
+    return graph;
+}
+
+function topologicalSort(graph) {
+    const result = [];
+    const queue = [];
+    const inDegree = {};
+    
+    Object.keys(graph).forEach(id => {
+        inDegree[id] = graph[id].dependencies.length;
+        if (inDegree[id] === 0) {
+            queue.push(id);
+        }
+    });
+    
+    while (queue.length > 0) {
+        const current = queue.shift();
+        result.push(current);
+        
+        graph[current].dependents.forEach(dependent => {
+            inDegree[dependent]--;
+            if (inDegree[dependent] === 0) {
+                queue.push(dependent);
+            }
+        });
+    }
+    
+    if (result.length !== Object.keys(graph).length) {
+        return null;
+    }
+    
+    return result;
+}
+
+function getInputValues(blockId) {
+    const values = {};
+    const block = blocks.find(b => b.id === blockId);
+    if (!block) return values;
+    
+    const config = blockPortsConfig[block.type];
+    if (!config) return values;
+    
+    for (let i = 0; i < config.inputs; i++) {
+        const connection = connections.find(c => c.toBlock === blockId && c.toPortIndex === i);
+        if (connection) {
+            const sourceBlock = blocks.find(b => b.id === connection.fromBlock);
+            if (sourceBlock && sourceBlock.value !== undefined) {
+                values[`input${i}`] = sourceBlock.value;
+            }
+        }
+    }
+    
+    return values;
+}
+
+function executeBlock(block, inputValues) {
     const blockEl = document.getElementById(block.id);
     if (!blockEl) return;
+    
     const inputs = blockEl.querySelectorAll('input');
-
+    let result = undefined;
+    
+    const getValue = (index, defaultValue = 0) => {
+        if (inputValues[`input${index}`] !== undefined) {
+            return inputValues[`input${index}`];
+        }
+        if (inputs[index]) {
+            const val = evaluateExpression(inputs[index].value);
+            return val !== undefined ? val : defaultValue;
+        }
+        return defaultValue;
+    };
+    
     switch(block.type) {
         case 'var-declare':
             const names = inputs[0].value.split(',').map(n => n.trim());
-            names.forEach(name => variables[name] = 0);
-            output.push('Созданы: ' + names.join(', '));
+            names.forEach(name => {
+                variables[name] = 0;
+            });
+            result = names[0] || '';
+            output.push(`📦 Созданы переменные: ${names.join(', ')}`);
             break;
+            
         case 'var-assign':
             const varName = inputs[0].value;
-            const val = evaluateExpression(inputs[1].value);
+            const val = getValue(1);
             variables[varName] = val;
-            output.push(varName + ' = ' + val);
+            result = val;
+            output.push(`📝 ${varName} = ${val}`);
             break;
+            
         case 'var-get':
             const varname = inputs[0].value;
-            const value = variables[varname] !== undefined ? variables[varname] : 0;
-            output.push('Получено: ' + varname + ' = ' + value);
+            result = variables[varname] !== undefined ? variables[varname] : 0;
+            output.push(`🔍 ${varname} = ${result}`);
             break;
+        
         case 'math-add':
-            const a = evaluateExpression(inputs[0].value);
-            const b = evaluateExpression(inputs[1].value);
-            output.push('Сложение: ' + a + ' + ' + b + ' = ' + (a + b));
+            result = getValue(0) + getValue(1);
+            output.push(`➕ ${getValue(0)} + ${getValue(1)} = ${result}`);
             break;
+            
         case 'math-sub':
-            const a1 = evaluateExpression(inputs[0].value);
-            const b1 = evaluateExpression(inputs[1].value);
-            output.push('Вычитание: ' + a1 + ' - ' + b1 + ' = ' + (a1 - b1));
+            result = getValue(0) - getValue(1);
+            output.push(`➖ ${getValue(0)} - ${getValue(1)} = ${result}`);
             break;
+            
         case 'math-mul':
-            const a2 = evaluateExpression(inputs[0].value);
-            const b2 = evaluateExpression(inputs[1].value);
-            output.push('Умножение: ' + a2 + ' * ' + b2 + ' = ' + (a2 * b2));
+            result = getValue(0) * getValue(1);
+            output.push(`✖️ ${getValue(0)} * ${getValue(1)} = ${result}`);
             break;
+            
         case 'math-div':
-            const a3 = evaluateExpression(inputs[0].value);
-            const b3 = evaluateExpression(inputs[1].value);
-            if (b3 === 0) {
-                errors.push('Деление на ноль');
+            const divisor = getValue(1);
+            if (divisor === 0) {
+                throw new Error('Деление на ноль');
             } else {
-                output.push('Деление: ' + a3 + ' / ' + b3 + ' = ' + (a3 / b3));
+                result = Math.floor(getValue(0) / divisor);
+                output.push(`➗ ${getValue(0)} / ${divisor} = ${result}`);
             }
             break;
+            
         case 'math-mod':
-            const a4 = evaluateExpression(inputs[0].value);
-            const b4 = evaluateExpression(inputs[1].value);
-            if (b4 === 0) {
-                errors.push('Остаток от деления на ноль');
+            const modDivisor = getValue(1);
+            if (modDivisor === 0) {
+                throw new Error('Остаток от деления на ноль');
             } else {
-                output.push('Остаток: ' + a4 + ' % ' + b4 + ' = ' + (a4 % b4));
+                result = getValue(0) % modDivisor;
+                output.push(`🔄 ${getValue(0)} % ${modDivisor} = ${result}`);
             }
             break;
+        
         case 'compare-eq':
-            const a5 = evaluateExpression(inputs[0].value);
-            const b5 = evaluateExpression(inputs[1].value);
-            output.push('Равно: ' + a5 + ' == ' + b5 + ' = ' + (a5 == b5));
+            result = (getValue(0) == getValue(1)) ? 1 : 0;
+            output.push(`⚖️ ${getValue(0)} == ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
             break;
+            
         case 'compare-neq':
-            const a6 = evaluateExpression(inputs[0].value);
-            const b6 = evaluateExpression(inputs[1].value);
-            output.push('Не равно: ' + a6 + ' != ' + b6 + ' = ' + (a6 != b6));
+            result = (getValue(0) != getValue(1)) ? 1 : 0;
+            output.push(`⚖️ ${getValue(0)} != ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
             break;
+            
         case 'compare-gt':
-            const a7 = evaluateExpression(inputs[0].value);
-            const b7 = evaluateExpression(inputs[1].value);
-            output.push('Больше: ' + a7 + ' > ' + b7 + ' = ' + (a7 > b7));
+            result = (getValue(0) > getValue(1)) ? 1 : 0;
+            output.push(`⚖️ ${getValue(0)} > ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
             break;
+            
         case 'compare-lt':
-            const a8 = evaluateExpression(inputs[0].value);
-            const b8 = evaluateExpression(inputs[1].value);
-            output.push('Меньше: ' + a8 + ' < ' + b8 + ' = ' + (a8 < b8));
+            result = (getValue(0) < getValue(1)) ? 1 : 0;
+            output.push(`⚖️ ${getValue(0)} < ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
             break;
+            
+        case 'compare-ge':
+            result = (getValue(0) >= getValue(1)) ? 1 : 0;
+            output.push(`⚖️ ${getValue(0)} >= ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
+            break;
+            
+        case 'compare-le':
+            result = (getValue(0) <= getValue(1)) ? 1 : 0;
+            output.push(`⚖️ ${getValue(0)} <= ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
+            break;
+        
         case 'control-if':
+            const condition = getValue(0);
+            output.push(`🤔 Если: ${condition ? 'истина' : 'ложь'}`);
+            result = condition ? 1 : 0;
             break;
-        case 'control-while':
+            
+        case 'control-begin':
+            result = 0;
             break;
+        
         case 'print':
-            const val2 = evaluateExpression(inputs[0].value);
-            output.push('> ' + val2);
+            const printVal = getValue(0);
+            output.push(`📢 > ${printVal}`);
+            result = printVal;
             break;
     }
-    updateVariables();
+    
+    block.value = result;
 }
 
 function evaluateExpression(expr) {
     if (typeof expr !== 'string') return expr;
+    if (expr.trim() === '') return 0;
+    
     let result = expr;
     for (let name in variables) {
         result = result.replace(new RegExp('\\b' + name + '\\b', 'g'), variables[name]);
     }
+    
     try {
         return Function('"use strict";return (' + result + ')')();
     } catch {
@@ -562,6 +857,7 @@ function resetProgram() {
 function clearAll() {
     const workspace = document.getElementById('workspace');
     workspace.innerHTML = '<div class="workspace-placeholder">Перетащите блоки сюда</div>';
+    
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('id', 'connections-svg');
     svg.classList.add('connections-svg');
@@ -576,9 +872,14 @@ function clearAll() {
 function updateVariables() {
     const list = document.getElementById('variablesList');
     let html = '';
+    
     for (let name in variables) {
-        html += '<div class="variable-item"><span class="variable-name">' + name + '</span> <span class="variable-value">' + variables[name] + '</span></div>';
+        html += '<div class="variable-item">' +
+                '<span class="variable-name">' + name + '</span>' +
+                '<span class="variable-value">' + variables[name] + '</span>' +
+                '</div>';
     }
+    
     list.innerHTML = html || 'Нет переменных';
 }
 
@@ -589,7 +890,9 @@ function updateOutput() {
 
 function updateErrors() {
     const list = document.getElementById('errorsList');
-    list.innerHTML = errors.length ? errors.map(err => '<div class="error-item">⚠️ ' + err + '</div>').join('') : 'Ошибок нет';
+    list.innerHTML = errors.length ? 
+        errors.map(err => '<div class="error-item">' + err + '</div>').join('') : 
+        '✅ Ошибок нет';
 }
 
 function updateUI() {
