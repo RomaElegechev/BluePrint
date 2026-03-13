@@ -1,15 +1,17 @@
 let variables = {};
+let arrays = {};
 let output = [];
 let errors = [];
 let blocks = [];
 let connections = [];
 let drawingLine = null;
 let selectedPort = null;
+let dragTimeout = null;
 
 const blockPortsConfig = {
     'var-declare':  { inputs: 0, outputs: 1 },
-    'var-assign':   { inputs: 2, outputs: 1 },
-    'var-get':      { inputs: 1, outputs: 1 },
+    'var-assign':   { inputs: 1, outputs: 0 },
+    'var-get':      { inputs: 0, outputs: 1 },
     'math-add':     { inputs: 2, outputs: 1 },
     'math-sub':     { inputs: 2, outputs: 1 },
     'math-mul':     { inputs: 2, outputs: 1 },
@@ -21,9 +23,24 @@ const blockPortsConfig = {
     'compare-lt':   { inputs: 2, outputs: 1 },
     'compare-ge':   { inputs: 2, outputs: 1 },
     'compare-le':   { inputs: 2, outputs: 1 },
-    'control-if':   { inputs: 1, outputs: 2 },
-    'control-begin': { inputs: 0, outputs: 1 },
-    'print':        { inputs: 1, outputs: 0 }
+    'logic-and':    { inputs: 2, outputs: 1 },
+    'logic-or':     { inputs: 2, outputs: 1 },
+    'logic-not':    { inputs: 1, outputs: 1 },
+    'array-declare': { inputs: 0, outputs: 1 },
+    'array-get':     { inputs: 1, outputs: 1 },
+    'array-set':     { inputs: 2, outputs: 0 },
+    'control-if':    { inputs: 1, outputs: 0 },
+    'control-while': { inputs: 1, outputs: 0 },
+    'control-begin': { inputs: 0, outputs: 0 },
+    'print':         { inputs: 1, outputs: 0 },
+    'constant':      { inputs: 0, outputs: 1 },
+    'string-length': { inputs: 1, outputs: 1 },
+    'string-concat': { inputs: 2, outputs: 1 },
+    'string-substring': { inputs: 3, outputs: 1 },
+    'to-string':     { inputs: 1, outputs: 1 },
+    'to-number':     { inputs: 1, outputs: 1 },
+    'char-code':     { inputs: 1, outputs: 1 },
+    'from-char-code': { inputs: 1, outputs: 1 }
 };
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -68,7 +85,7 @@ function drop(event) {
     const nodeType = event.dataTransfer.getData('text/plain');
     if (!nodeType) return;
     
-    const target = event.target.closest('.then-blocks, .else-blocks, .begin-blocks');
+    const target = event.target.closest('.then-blocks, .else-blocks, .begin-blocks, .body-blocks');
     
     if (target) {
         const containerRect = target.getBoundingClientRect();
@@ -86,84 +103,137 @@ function drop(event) {
 function createBlock(type, x, y, containerId = null) {
     const workspace = document.getElementById('workspace');
     const blockId = 'block_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    
+
     const placeholder = workspace.querySelector('.workspace-placeholder');
-    if (placeholder) {
-        placeholder.remove();
+    if (placeholder) placeholder.remove();
+
+    let parentId = null;
+    let containerType = null;
+    if (containerId) {
+        if (containerId.startsWith('then_')) {
+            parentId = containerId.substring(5);
+            containerType = 'then';
+        } else if (containerId.startsWith('else_')) {
+            parentId = containerId.substring(5);
+            containerType = 'else';
+        } else if (containerId.startsWith('body_')) {
+            parentId = containerId.substring(5);
+            containerType = 'body';
+        }
     }
-    
+
     const block = document.createElement('div');
     block.className = 'workspace-block';
     block.id = blockId;
     block.style.position = containerId ? 'relative' : 'absolute';
     block.style.left = x + 'px';
     block.style.top = y + 'px';
-    
+
     let title = '';
     let content = '';
-    
-    switch(type) {
+
+    switch (type) {
         case 'var-declare':
-            title = 'Создать переменную';
-            content = '<input type="text" value="x, y" placeholder="имена через запятую" onchange="updateBlockData(\'' + blockId + '\', \'names\', this.value)">';
+            title = 'Объявить переменные';
+            content = `
+                <select onchange="updateBlockData('${blockId}', 'type', this.value)">
+                    <option value="int">int</option>
+                    <option value="float">float</option>
+                    <option value="string">string</option>
+                    <option value="char">char</option>
+                </select>
+                <input type="text" value="x, y" placeholder="имена через запятую" onchange="updateBlockData('${blockId}', 'names', this.value)">
+            `;
             break;
         case 'var-assign':
-            title = 'Присвоить значение';
-            content = '<input type="text" value="x" placeholder="переменная" style="width:70px" onchange="updateBlockData(\'' + blockId + '\', \'var\', this.value)"> = <input type="text" value="0" placeholder="значение" style="width:70px" onchange="updateBlockData(\'' + blockId + '\', \'value\', this.value)">';
+            title = 'Присвоить';
+            content = '<input type="text" value="x" placeholder="переменная" style="width:80px" onchange="updateBlockData(\'' + blockId + '\', \'var\', this.value)"> = ⬅️';
             break;
         case 'var-get':
-            title = 'Получить переменную';
-            content = '<input type="text" value="x" placeholder="имя" onchange="updateBlockData(\'' + blockId + '\', \'var\', this.value)">';
+            title = 'Переменная';
+            content = '<input type="text" value="x" placeholder="имя" style="width:80px" onchange="updateBlockData(\'' + blockId + '\', \'var\', this.value)"> ➔';
             break;
         case 'math-add':
-            title = 'Сложение';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> + <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '➕ Сложение / Конкатенация';
+            content = '';
             break;
         case 'math-sub':
-            title = 'Вычитание';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> - <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '➖ Вычитание';
+            content = '';
             break;
         case 'math-mul':
-            title = 'Умножение';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> * <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '✖️ Умножение';
+            content = '';
             break;
         case 'math-div':
-            title = 'Деление';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> / <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '➗ Деление (вещественное)';
+            content = '';
             break;
         case 'math-mod':
-            title = 'Остаток';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> % <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '🔄 Остаток от деления';
+            content = '';
             break;
         case 'compare-eq':
-            title = 'Равно';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> == <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '⚖️ Равно (==)';
+            content = '';
             break;
         case 'compare-neq':
-            title = 'Не равно';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> != <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '⚖️ Не равно (!=)';
+            content = '';
             break;
         case 'compare-gt':
-            title = 'Больше';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> > <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '⚖️ Больше (>)';
+            content = '';
             break;
         case 'compare-lt':
-            title = 'Меньше';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> < <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '⚖️ Меньше (<)';
+            content = '';
             break;
         case 'compare-ge':
-            title = 'Больше или равно';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> >= <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '⚖️ Больше или равно (>=)';
+            content = '';
             break;
         case 'compare-le':
-            title = 'Меньше или равно';
-            content = '<input type="text" value="a" placeholder="a" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'a\', this.value)"> <= <input type="text" value="b" placeholder="b" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'b\', this.value)">';
+            title = '⚖️ Меньше или равно (<=)';
+            content = '';
+            break;
+        case 'logic-and':
+            title = 'AND';
+            content = '';
+            break;
+        case 'logic-or':
+            title = 'OR';
+            content = '';
+            break;
+        case 'logic-not':
+            title = 'NOT';
+            content = '';
+            break;
+        case 'array-declare':
+            title = 'Создать массив';
+            content = `
+                <select onchange="updateBlockData('${blockId}', 'type', this.value)">
+                    <option value="int">int</option>
+                    <option value="float">float</option>
+                    <option value="string">string</option>
+                </select>
+                <input type="text" value="arr" placeholder="имя" style="width:60px" onchange="updateBlockData('${blockId}', 'name', this.value)">
+                [ <input type="number" value="5" placeholder="размер" style="width:50px" onchange="updateBlockData('${blockId}', 'size', this.value)"> ]
+            `;
+            break;
+        case 'array-get':
+            title = 'Элемент массива';
+            content = '<input type="text" value="arr" placeholder="имя" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'name\', this.value)"> [ ⬅️индекс ] ➔';
+            break;
+        case 'array-set':
+            title = 'Присвоить элементу';
+            content = '<input type="text" value="arr" placeholder="имя" style="width:60px" onchange="updateBlockData(\'' + blockId + '\', \'name\', this.value)"> [ ⬅️индекс ] = ⬅️значение';
             break;
         case 'control-if':
-            title = 'Если';
+            title = 'Если (If)';
             content = `
                 <div class="if-condition">
-                    <input type="text" value="условие" placeholder="условие" onchange="updateBlockData('${blockId}', 'condition', this.value)">
+                    ⬅️ <input type="text" value="1" placeholder="условие" style="width:100px" onchange="updateBlockData('${blockId}', 'condition', this.value)">
                 </div>
                 <div class="if-then">
                     <div class="then-label">Тогда:</div>
@@ -172,6 +242,18 @@ function createBlock(type, x, y, containerId = null) {
                 <div class="if-else">
                     <div class="else-label">Иначе:</div>
                     <div class="else-blocks" id="else_${blockId}"></div>
+                </div>
+            `;
+            break;
+        case 'control-while':
+            title = 'Пока (While)';
+            content = `
+                <div class="while-condition">
+                    ⬅️ <input type="text" value="1" placeholder="условие" style="width:100px" onchange="updateBlockData('${blockId}', 'condition', this.value)">
+                </div>
+                <div class="while-body">
+                    <div class="body-label">Тело:</div>
+                    <div class="body-blocks" id="body_${blockId}"></div>
                 </div>
             `;
             break;
@@ -185,13 +267,53 @@ function createBlock(type, x, y, containerId = null) {
             break;
         case 'print':
             title = 'Вывести';
-            content = '<input type="text" value="0" placeholder="значение" onchange="updateBlockData(\'' + blockId + '\', \'value\', this.value)">';
+            content = '⬅️ значение';
+            break;
+        case 'constant':
+            title = 'Константа';
+            content = `
+                <select onchange="updateBlockData('${blockId}', 'type', this.value)">
+                    <option value="int">int</option>
+                    <option value="float">float</option>
+                    <option value="string">string</option>
+                </select>
+                <input type="number" value="0" placeholder="значение" onchange="updateBlockData('${blockId}', 'value', this.value)">
+                ➔
+            `;
+            break;
+        case 'string-length':
+            title = 'Длина строки';
+            content = '⬅️ строка ➔';
+            break;
+        case 'string-concat':
+            title = 'Конкатенация';
+            content = '⬅️ стр1 + стр2 ➔';
+            break;
+        case 'string-substring':
+            title = 'Подстрока';
+            content = '⬅️ строка | start | length ➔';
+            break;
+        case 'to-string':
+            title = 'В строку';
+            content = '⬅️ значение ➔';
+            break;
+        case 'to-number':
+            title = 'В число';
+            content = '⬅️ строка ➔';
+            break;
+        case 'char-code':
+            title = 'Код символа';
+            content = '⬅️ символ ➔';
+            break;
+        case 'from-char-code':
+            title = 'Символ из кода';
+            content = '⬅️ код ➔';
             break;
         default:
             title = type;
             content = '';
     }
-    
+
     block.innerHTML = `
         <div class="block-header" onmousedown="startDragBlock('${blockId}', event)">
             <span>${title}</span>
@@ -201,45 +323,52 @@ function createBlock(type, x, y, containerId = null) {
             ${content}
         </div>
     `;
-    
+
     if (containerId) {
         const container = document.getElementById(containerId);
-        container.appendChild(block);
-        const placeholder = container.querySelector('div[style*="color:#999"]');
-        if (placeholder) placeholder.remove();
+        if (container) {
+            container.appendChild(block);
+            const placeholderInside = container.querySelector('div[style*="color:#999"]');
+            if (placeholderInside) placeholderInside.remove();
+        } else {
+            workspace.appendChild(block);
+        }
     } else {
         workspace.appendChild(block);
     }
-    
+
     addPortsToBlock(block, type);
-    
+
     const blockData = {
         id: blockId,
         type: type,
         data: {},
         value: undefined,
-        executed: false
+        executed: false,
+        parentId: parentId,
+        thenChildren: [],
+        elseChildren: [],
+        bodyChildren: []
     };
     blocks.push(blockData);
-    
+
+    if (parentId) {
+        const parent = blocks.find(b => b.id === parentId);
+        if (parent) {
+            if (containerType === 'then') parent.thenChildren.push(blockId);
+            else if (containerType === 'else') parent.elseChildren.push(blockId);
+            else if (containerType === 'body') parent.bodyChildren.push(blockId);
+        }
+    }
+
     updateUI();
 }
 
 function addPortsToBlock(block, type) {
     const config = blockPortsConfig[type] || { inputs: 1, outputs: 1 };
-    
-    const hitArea = document.createElement('div');
-    hitArea.style.position = 'absolute';
-    hitArea.style.top = '0';
-    hitArea.style.left = '0';
-    hitArea.style.width = '100%';
-    hitArea.style.height = '100%';
-    hitArea.style.pointerEvents = 'none';
-    block.appendChild(hitArea);
-    
     const portsContainer = document.createElement('div');
     portsContainer.className = 'block-ports';
-    
+
     for (let i = 0; i < config.inputs; i++) {
         const port = document.createElement('div');
         port.className = `port port-input port-left`;
@@ -248,16 +377,29 @@ function addPortsToBlock(block, type) {
         port.setAttribute('data-port-index', i);
         const topPercent = (i + 0.5) / config.inputs * 100;
         port.style.top = topPercent + '%';
-        port.title = `Вход ${i + 1}`;
+        let label = 'Вход ' + (i+1);
+        if (type.startsWith('math') || type.startsWith('compare') || type.startsWith('logic')) {
+            label = i === 0 ? 'Левый операнд' : 'Правый операнд';
+        } else if (type === 'var-assign' && i === 0) label = 'Значение';
+        else if (type === 'array-get' && i === 0) label = 'Индекс';
+        else if (type === 'array-set') {
+            if (i === 0) label = 'Индекс';
+            else if (i === 1) label = 'Значение';
+        } else if (type === 'control-if' || type === 'control-while') label = 'Условие';
+        else if (type === 'print') label = 'Значение';
+        else if (type === 'string-length' && i === 0) label = 'Строка';
+        else if (type === 'string-concat') {
+            if (i === 0) label = 'Строка 1';
+            else if (i === 1) label = 'Строка 2';
+        } else if (type === 'string-substring') {
+            if (i === 0) label = 'Строка';
+            else if (i === 1) label = 'Начало';
+            else if (i === 2) label = 'Длина';
+        } else if (type === 'to-string' || type === 'to-number' || type === 'char-code' || type === 'from-char-code') {
+            label = i === 0 ? 'Вход' : 'Вход ' + (i+1);
+        }
+        port.title = label;
         port.addEventListener('mousedown', onPortMouseDown);
-        port.addEventListener('mouseenter', () => {
-            port.style.transform = 'scale(1.3)';
-            port.style.backgroundColor = '#e3f2fd';
-        });
-        port.addEventListener('mouseleave', () => {
-            port.style.transform = 'scale(1)';
-            port.style.backgroundColor = 'white';
-        });
         portsContainer.appendChild(port);
     }
 
@@ -269,16 +411,26 @@ function addPortsToBlock(block, type) {
         port.setAttribute('data-port-index', i);
         const topPercent = (i + 0.5) / config.outputs * 100;
         port.style.top = topPercent + '%';
-        port.title = `Выход ${i + 1}`;
+        let label = 'Выход';
+        if (type === 'var-get') label = 'Значение переменной';
+        else if (type === 'math-add') label = 'Сумма / Конкатенация';
+        else if (type === 'math-sub') label = 'Разность';
+        else if (type === 'math-mul') label = 'Произведение';
+        else if (type === 'math-div') label = 'Частное';
+        else if (type === 'math-mod') label = 'Остаток';
+        else if (type.startsWith('compare')) label = 'Результат (1/0)';
+        else if (type.startsWith('logic')) label = 'Результат (1/0)';
+        else if (type === 'array-get') label = 'Значение элемента';
+        else if (type === 'constant') label = 'Константа';
+        else if (type === 'string-length') label = 'Длина';
+        else if (type === 'string-concat') label = 'Результат';
+        else if (type === 'string-substring') label = 'Подстрока';
+        else if (type === 'to-string') label = 'Строка';
+        else if (type === 'to-number') label = 'Число';
+        else if (type === 'char-code') label = 'Код';
+        else if (type === 'from-char-code') label = 'Символ';
+        port.title = label;
         port.addEventListener('mousedown', onPortMouseDown);
-        port.addEventListener('mouseenter', () => {
-            port.style.transform = 'scale(1.3)';
-            port.style.backgroundColor = '#ffebee';
-        });
-        port.addEventListener('mouseleave', () => {
-            port.style.transform = 'scale(1)';
-            port.style.backgroundColor = 'white';
-        });
         portsContainer.appendChild(port);
     }
 
@@ -292,9 +444,7 @@ function onPortMouseDown(event) {
     const portType = port.dataset.portType;
     const portIndex = parseInt(port.dataset.portIndex);
 
-    if (drawingLine) {
-        return;
-    }
+    if (drawingLine) return;
 
     selectedPort = { blockId, portType, portIndex, element: port };
 
@@ -496,6 +646,8 @@ function updateAllConnections() {
 }
 
 function startDragBlock(blockId, event) {
+    if (dragTimeout) clearTimeout(dragTimeout);
+    
     const block = document.getElementById(blockId);
     if (!block) return;
 
@@ -524,9 +676,28 @@ function startDragBlock(blockId, event) {
 }
 
 function deleteBlock(blockId) {
+    const block = blocks.find(b => b.id === blockId);
+    if (!block) return;
+
+    const childrenIds = [
+        ...(block.thenChildren || []),
+        ...(block.elseChildren || []),
+        ...(block.bodyChildren || [])
+    ];
+    childrenIds.forEach(childId => deleteBlock(childId));
+
+    if (block.parentId) {
+        const parent = blocks.find(b => b.id === block.parentId);
+        if (parent) {
+            if (parent.thenChildren) parent.thenChildren = parent.thenChildren.filter(id => id !== blockId);
+            if (parent.elseChildren) parent.elseChildren = parent.elseChildren.filter(id => id !== blockId);
+            if (parent.bodyChildren) parent.bodyChildren = parent.bodyChildren.filter(id => id !== blockId);
+        }
+    }
+
     removeConnectionsWithBlock(blockId);
-    const block = document.getElementById(blockId);
-    if (block) block.remove();
+    const blockEl = document.getElementById(blockId);
+    if (blockEl) blockEl.remove();
     blocks = blocks.filter(b => b.id !== blockId);
     updateUI();
 }
@@ -539,305 +710,332 @@ function updateBlockData(blockId, field, value) {
 function runProgram() {
     output = [];
     errors = [];
-    
-    const validationErrors = validateConnections();
-    if (validationErrors.length > 0) {
-        errors = validationErrors;
-        updateOutput();
-        updateErrors();
-        return;
-    }
-    
-    blocks.forEach(block => {
-        block.value = undefined;
-        block.executed = false;
+    arrays = {};
+    variables = {};
+
+    blocks.forEach(b => { b.executed = false; b.value = undefined; });
+
+    output.push('Запуск программы...');
+
+    const rootBlocks = blocks.filter(b => !b.parentId);
+    rootBlocks.sort((a, b) => {
+        const elA = document.getElementById(a.id);
+        const elB = document.getElementById(b.id);
+        if (!elA || !elB) return 0;
+        return parseFloat(elA.style.top) - parseFloat(elB.style.top);
     });
-    
-    output.push('🚀 Запуск программы...');
-    
-    const graph = buildDependencyGraph();
-    const executionOrder = topologicalSort(graph);
-    
-    if (executionOrder === null) {
-        errors.push('❌ Обнаружен цикл в зависимостях!');
-        updateOutput();
-        updateErrors();
-        return;
-    }
-    
-    executionOrder.forEach(blockId => {
-        const block = blocks.find(b => b.id === blockId);
-        if (!block || block.executed) return;
-        
-        try {
-            const inputValues = getInputValues(blockId);
-            executeBlock(block, inputValues);
-            block.executed = true;
-        } catch (e) {
-            errors.push(`❌ Ошибка в блоке ${block.id}: ${e.message}`);
+
+    rootBlocks.forEach(block => {
+        if (block && !block.executed) {
+            executeBlockRecursive(block);
         }
     });
-    
-    output.push('✅ Готово');
+
+    output.push('Готово');
     updateOutput();
     updateErrors();
     updateVariables();
 }
 
-function validateConnections() {
-    const errors = [];
-    
-    blocks.forEach(block => {
-        const config = blockPortsConfig[block.type];
-        if (!config) return;
-        
-        const blockElement = document.getElementById(block.id);
-        if (!blockElement) return;
-        
-        const inputs = blockElement.querySelectorAll('input');
-        
-        for (let i = 0; i < config.inputs; i++) {
-            const hasConnection = connections.some(c => c.toBlock === block.id && c.toPortIndex === i);
-            
-            if (block.type === 'var-assign') {
-                if (i === 1 && !hasConnection) {
-                    if (inputs[1] && inputs[1].value.trim() !== '') {
-                        continue;
-                    } else {
-                        errors.push(`❌ Блок "Присвоить значение" должен иметь значение (либо подключение, либо заполненное поле)`);
-                    }
-                }
-                continue;
-            }
-            
-            const requiredTypes = ['math-add', 'math-sub', 'math-mul', 'math-div', 'math-mod',
-                                  'compare-eq', 'compare-neq', 'compare-gt', 'compare-lt',
-                                  'compare-ge', 'compare-le', 'print'];
-            
-            if (requiredTypes.includes(block.type) && !hasConnection) {
-                const inputField = inputs[i];
-                if (inputField && inputField.value.trim() !== '') {
-                    continue;
-                } else {
-                    const portNames = ['первый', 'второй'];
-                    errors.push(`❌ Блок "${block.type}" требует значение для ${portNames[i] || i+1} входа (подключите или введите число)`);
-                }
-            }
-        }
-    });
-    
-    return errors;
-}
+function executeBlockRecursive(block) {
+    if (block.executed) return block.value;
 
-function buildDependencyGraph() {
-    const graph = {};
-    
-    blocks.forEach(block => {
-        graph[block.id] = {
-            id: block.id,
-            dependencies: [],
-            dependents: []
-        };
-    });
-    
-    connections.forEach(conn => {
-        if (graph[conn.toBlock] && graph[conn.fromBlock]) {
-            graph[conn.toBlock].dependencies.push(conn.fromBlock);
-            graph[conn.fromBlock].dependents.push(conn.toBlock);
-        }
-    });
-    
-    return graph;
-}
-
-function topologicalSort(graph) {
-    const result = [];
-    const queue = [];
-    const inDegree = {};
-    
-    Object.keys(graph).forEach(id => {
-        inDegree[id] = graph[id].dependencies.length;
-        if (inDegree[id] === 0) {
-            queue.push(id);
-        }
-    });
-    
-    while (queue.length > 0) {
-        const current = queue.shift();
-        result.push(current);
-        
-        graph[current].dependents.forEach(dependent => {
-            inDegree[dependent]--;
-            if (inDegree[dependent] === 0) {
-                queue.push(dependent);
-            }
-        });
-    }
-    
-    if (result.length !== Object.keys(graph).length) {
-        return null;
-    }
-    
-    return result;
-}
-
-function getInputValues(blockId) {
-    const values = {};
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return values;
-    
-    const config = blockPortsConfig[block.type];
-    if (!config) return values;
-    
-    for (let i = 0; i < config.inputs; i++) {
-        const connection = connections.find(c => c.toBlock === blockId && c.toPortIndex === i);
-        if (connection) {
-            const sourceBlock = blocks.find(b => b.id === connection.fromBlock);
-            if (sourceBlock && sourceBlock.value !== undefined) {
-                values[`input${i}`] = sourceBlock.value;
-            }
-        }
-    }
-    
-    return values;
-}
-
-function executeBlock(block, inputValues) {
     const blockEl = document.getElementById(block.id);
-    if (!blockEl) return;
-    
-    const inputs = blockEl.querySelectorAll('input');
+    if (!blockEl) return undefined;
+
+    const inputs = blockEl.querySelectorAll('input, select');
     let result = undefined;
-    
-    const getValue = (index, defaultValue = 0) => {
-        if (inputValues[`input${index}`] !== undefined) {
-            return inputValues[`input${index}`];
+
+    const resolveInput = (index) => {
+        const conn = connections.find(c => c.toBlock === block.id && c.toPortIndex === index);
+        if (conn) {
+            const sourceBlock = blocks.find(b => b.id === conn.fromBlock);
+            if (sourceBlock) {
+                return executeBlockRecursive(sourceBlock);
+            }
         }
-        if (inputs[index]) {
-            const val = evaluateExpression(inputs[index].value);
-            return val !== undefined ? val : defaultValue;
+        if (inputs[index] && inputs[index].tagName === 'INPUT') {
+            return evaluateExpression(inputs[index].value);
         }
-        return defaultValue;
+        return 0;
     };
-    
-    switch(block.type) {
-        case 'var-declare':
-            const names = inputs[0].value.split(',').map(n => n.trim());
-            names.forEach(name => {
-                variables[name] = 0;
-            });
-            result = names[0] || '';
-            output.push(`📦 Созданы переменные: ${names.join(', ')}`);
-            break;
-            
-        case 'var-assign':
-            const varName = inputs[0].value;
-            const val = getValue(1);
-            variables[varName] = val;
-            result = val;
-            output.push(`📝 ${varName} = ${val}`);
-            break;
-            
-        case 'var-get':
-            const varname = inputs[0].value;
-            result = variables[varname] !== undefined ? variables[varname] : 0;
-            output.push(`🔍 ${varname} = ${result}`);
-            break;
-        
-        case 'math-add':
-            result = getValue(0) + getValue(1);
-            output.push(`➕ ${getValue(0)} + ${getValue(1)} = ${result}`);
-            break;
-            
-        case 'math-sub':
-            result = getValue(0) - getValue(1);
-            output.push(`➖ ${getValue(0)} - ${getValue(1)} = ${result}`);
-            break;
-            
-        case 'math-mul':
-            result = getValue(0) * getValue(1);
-            output.push(`✖️ ${getValue(0)} * ${getValue(1)} = ${result}`);
-            break;
-            
-        case 'math-div':
-            const divisor = getValue(1);
-            if (divisor === 0) {
-                throw new Error('Деление на ноль');
-            } else {
-                result = Math.floor(getValue(0) / divisor);
-                output.push(`➗ ${getValue(0)} / ${divisor} = ${result}`);
+
+    const executeChildren = (childIds) => {
+        const childrenWithPos = childIds
+            .map(id => {
+                const child = blocks.find(b => b.id === id);
+                const el = document.getElementById(id);
+                return { child, top: el ? parseFloat(el.style.top) : 0 };
+            })
+            .filter(item => item.child)
+            .sort((a, b) => a.top - b.top);
+        for (let item of childrenWithPos) {
+            executeBlockRecursive(item.child);
+        }
+    };
+
+    try {
+        switch (block.type) {
+            case 'var-declare': {
+                const typeSelect = inputs[0];
+                const namesInput = inputs[1];
+                const type = typeSelect.value;
+                const names = namesInput.value.split(',').map(n => n.trim());
+                names.forEach(name => {
+                    if (type === 'int' || type === 'float') variables[name] = 0;
+                    else if (type === 'string') variables[name] = '';
+                    else if (type === 'char') variables[name] = '';
+                });
+                result = names[0] || '';
+                output.push(`Созданы переменные (${type}): ${names.join(', ')}`);
+                break;
             }
-            break;
-            
-        case 'math-mod':
-            const modDivisor = getValue(1);
-            if (modDivisor === 0) {
-                throw new Error('Остаток от деления на ноль');
-            } else {
-                result = getValue(0) % modDivisor;
-                output.push(`🔄 ${getValue(0)} % ${modDivisor} = ${result}`);
+            case 'var-assign': {
+                const varName = inputs[0].value;
+                const val = resolveInput(0);
+                variables[varName] = val;
+                result = val;
+                output.push(`${varName} = ${JSON.stringify(val)}`);
+                break;
             }
-            break;
-        
-        case 'compare-eq':
-            result = (getValue(0) == getValue(1)) ? 1 : 0;
-            output.push(`⚖️ ${getValue(0)} == ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
-            break;
-            
-        case 'compare-neq':
-            result = (getValue(0) != getValue(1)) ? 1 : 0;
-            output.push(`⚖️ ${getValue(0)} != ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
-            break;
-            
-        case 'compare-gt':
-            result = (getValue(0) > getValue(1)) ? 1 : 0;
-            output.push(`⚖️ ${getValue(0)} > ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
-            break;
-            
-        case 'compare-lt':
-            result = (getValue(0) < getValue(1)) ? 1 : 0;
-            output.push(`⚖️ ${getValue(0)} < ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
-            break;
-            
-        case 'compare-ge':
-            result = (getValue(0) >= getValue(1)) ? 1 : 0;
-            output.push(`⚖️ ${getValue(0)} >= ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
-            break;
-            
-        case 'compare-le':
-            result = (getValue(0) <= getValue(1)) ? 1 : 0;
-            output.push(`⚖️ ${getValue(0)} <= ${getValue(1)} = ${result === 1 ? 'true' : 'false'}`);
-            break;
-        
-        case 'control-if':
-            const condition = getValue(0);
-            output.push(`🤔 Если: ${condition ? 'истина' : 'ложь'}`);
-            result = condition ? 1 : 0;
-            break;
-            
-        case 'control-begin':
-            result = 0;
-            break;
-        
-        case 'print':
-            const printVal = getValue(0);
-            output.push(`📢 > ${printVal}`);
-            result = printVal;
-            break;
+            case 'var-get': {
+                const varName = inputs[0].value;
+                result = variables[varName] !== undefined ? variables[varName] : 0;
+                output.push(`${varName} = ${JSON.stringify(result)}`);
+                break;
+            }
+            case 'math-add':
+                result = resolveInput(0) + resolveInput(1);
+                output.push(` = ${JSON.stringify(result)}`);
+                break;
+            case 'math-sub':
+                result = resolveInput(0) - resolveInput(1);
+                output.push(` = ${result}`);
+                break;
+            case 'math-mul':
+                result = resolveInput(0) * resolveInput(1);
+                output.push(` = ${result}`);
+                break;
+            case 'math-div': {
+                const divisor = resolveInput(1);
+                if (divisor === 0) throw new Error('Деление на ноль');
+                result = resolveInput(0) / divisor;
+                output.push(` = ${result}`);
+                break;
+            }
+            case 'math-mod': {
+                const divisor = resolveInput(1);
+                if (divisor === 0) throw new Error('Остаток от деления на ноль');
+                result = resolveInput(0) % divisor;
+                output.push(` = ${result}`);
+                break;
+            }
+            case 'compare-eq':
+                result = (resolveInput(0) === resolveInput(1)) ? 1 : 0;
+                output.push(` === ${result ? 'true' : 'false'}`);
+                break;
+            case 'compare-neq':
+                result = (resolveInput(0) !== resolveInput(1)) ? 1 : 0;
+                output.push(` !== ${result ? 'true' : 'false'}`);
+                break;
+            case 'compare-gt':
+                result = (resolveInput(0) > resolveInput(1)) ? 1 : 0;
+                output.push(` > ${result ? 'true' : 'false'}`);
+                break;
+            case 'compare-lt':
+                result = (resolveInput(0) < resolveInput(1)) ? 1 : 0;
+                output.push(` < ${result ? 'true' : 'false'}`);
+                break;
+            case 'compare-ge':
+                result = (resolveInput(0) >= resolveInput(1)) ? 1 : 0;
+                output.push(` >= ${result ? 'true' : 'false'}`);
+                break;
+            case 'compare-le':
+                result = (resolveInput(0) <= resolveInput(1)) ? 1 : 0;
+                output.push(` <= ${result ? 'true' : 'false'}`);
+                break;
+            case 'logic-and':
+                result = (resolveInput(0) && resolveInput(1)) ? 1 : 0;
+                output.push(` AND = ${result}`);
+                break;
+            case 'logic-or':
+                result = (resolveInput(0) || resolveInput(1)) ? 1 : 0;
+                output.push(` OR = ${result}`);
+                break;
+            case 'logic-not':
+                result = resolveInput(0) ? 0 : 1;
+                output.push(` NOT = ${result}`);
+                break;
+            case 'array-declare': {
+                const typeSelect = inputs[0];
+                const nameInput = inputs[1];
+                const sizeInput = inputs[2];
+                const arrName = nameInput.value.trim();
+                const size = parseInt(sizeInput.value);
+                const type = typeSelect.value;
+                if (isNaN(size) || size < 0) throw new Error('Некорректный размер массива');
+                arrays[arrName] = new Array(size);
+                for (let i = 0; i < size; i++) {
+                    if (type === 'int' || type === 'float') arrays[arrName][i] = 0;
+                    else arrays[arrName][i] = '';
+                }
+                result = arrName;
+                output.push(`Создан массив ${arrName}[${size}] типа ${type}`);
+                break;
+            }
+            case 'array-get': {
+                const arrName = inputs[0].value.trim();
+                const index = resolveInput(0);
+                if (!arrays[arrName]) throw new Error(`Массив ${arrName} не объявлен`);
+                if (index < 0 || index >= arrays[arrName].length) throw new Error(`Индекс ${index} вне границ массива ${arrName}`);
+                result = arrays[arrName][index];
+                output.push(`${arrName}[${index}] = ${JSON.stringify(result)}`);
+                break;
+            }
+            case 'array-set': {
+                const arrName = inputs[0].value.trim();
+                const index = resolveInput(0);
+                const value = resolveInput(1);
+                if (!arrays[arrName]) throw new Error(`Массив ${arrName} не объявлен`);
+                if (index < 0 || index >= arrays[arrName].length) throw new Error(`Индекс ${index} вне границ массива ${arrName}`);
+                arrays[arrName][index] = value;
+                result = value;
+                output.push(`${arrName}[${index}] = ${JSON.stringify(value)}`);
+                break;
+            }
+            case 'control-if': {
+                const condition = resolveInput(0);
+                output.push(`Условие: ${condition ? 'истина' : 'ложь'}`);
+                if (condition) {
+                    executeChildren(block.thenChildren);
+                } else {
+                    executeChildren(block.elseChildren);
+                }
+                result = condition ? 1 : 0;
+                break;
+            }
+            case 'control-while': {
+                let condition = resolveInput(0);
+                while (condition) {
+                    output.push(`Итерация цикла (условие истинно)`);
+                    executeChildren(block.bodyChildren);
+                    condition = resolveInput(0);
+                }
+                output.push(`Цикл завершён`);
+                result = 0;
+                break;
+            }
+            case 'control-begin': {
+                executeChildren(block.bodyChildren);
+                result = 0;
+                break;
+            }
+            case 'print': {
+                const val = resolveInput(0);
+                output.push(`> ${JSON.stringify(val)}`);
+                result = val;
+                break;
+            }
+            case 'constant': {
+                const typeSelect = inputs[0];
+                const valueInput = inputs[1];
+                const type = typeSelect.value;
+                const raw = valueInput.value;
+                if (type === 'int') result = parseInt(raw) || 0;
+                else if (type === 'float') result = parseFloat(raw) || 0.0;
+                else if (type === 'string') result = raw;
+                output.push(`Константа: ${JSON.stringify(result)}`);
+                break;
+            }
+            case 'string-length': {
+                const str = String(resolveInput(0));
+                result = str.length;
+                output.push(`Длина = ${result}`);
+                break;
+            }
+            case 'string-concat': {
+                const a = String(resolveInput(0));
+                const b = String(resolveInput(1));
+                result = a + b;
+                output.push(`Конкатенация = ${JSON.stringify(result)}`);
+                break;
+            }
+            case 'string-substring': {
+                const str = String(resolveInput(0));
+                const start = Number(resolveInput(1));
+                const len = Number(resolveInput(2));
+                if (isNaN(start) || isNaN(len)) throw new Error('Индексы должны быть числами');
+                result = str.substr(start, len);
+                output.push(`Подстрока = ${JSON.stringify(result)}`);
+                break;
+            }
+            case 'to-string': {
+                const val = resolveInput(0);
+                result = String(val);
+                output.push(`В строку = ${JSON.stringify(result)}`);
+                break;
+            }
+            case 'to-number': {
+                const str = String(resolveInput(0));
+                result = parseFloat(str);
+                if (isNaN(result)) result = 0;
+                output.push(`В число = ${result}`);
+                break;
+            }
+            case 'char-code': {
+                const str = String(resolveInput(0));
+                if (str.length === 0) result = 0;
+                else result = str.charCodeAt(0);
+                output.push(`Код символа = ${result}`);
+                break;
+            }
+            case 'from-char-code': {
+                const code = Number(resolveInput(0));
+                result = String.fromCharCode(code);
+                output.push(`Символ из кода = ${JSON.stringify(result)}`);
+                break;
+            }
+            default:
+                output.push(`Неизвестный тип блока: ${block.type}`);
+        }
+
+        block.value = result;
+        block.executed = true;
+        return result;
+    } catch (e) {
+        errors.push(`Ошибка в блоке ${block.id}: ${e.message}`);
+        block.executed = true;
+        return undefined;
     }
-    
-    block.value = result;
 }
 
 function evaluateExpression(expr) {
     if (typeof expr !== 'string') return expr;
     if (expr.trim() === '') return 0;
     
+    if (expr.includes('Function') || expr.includes('eval') || expr.includes('constructor')) {
+        errors.push('Недопустимое выражение');
+        return 0;
+    }
+
     let result = expr;
     for (let name in variables) {
         result = result.replace(new RegExp('\\b' + name + '\\b', 'g'), variables[name]);
     }
-    
+
+    for (let arrName in arrays) {
+        const regex = new RegExp('\\b' + arrName + '\\[(\\d+)\\]', 'g');
+        result = result.replace(regex, (match, index) => {
+            const idx = parseInt(index);
+            if (arrays[arrName] && idx >= 0 && idx < arrays[arrName].length) {
+                return arrays[arrName][idx];
+            } else {
+                errors.push(`Обращение к несуществующему элементу массива ${arrName}[${idx}]`);
+                return 0;
+            }
+        });
+    }
+
     try {
         return Function('"use strict";return (' + result + ')')();
     } catch {
@@ -847,6 +1045,7 @@ function evaluateExpression(expr) {
 
 function resetProgram() {
     variables = {};
+    arrays = {};
     output = [];
     errors = [];
     updateVariables();
@@ -874,9 +1073,11 @@ function updateVariables() {
     let html = '';
     
     for (let name in variables) {
+        let val = variables[name];
+        if (typeof val === 'string') val = '"' + val + '"';
         html += '<div class="variable-item">' +
                 '<span class="variable-name">' + name + '</span>' +
-                '<span class="variable-value">' + variables[name] + '</span>' +
+                '<span class="variable-value">' + val + '</span>' +
                 '</div>';
     }
     
@@ -892,7 +1093,7 @@ function updateErrors() {
     const list = document.getElementById('errorsList');
     list.innerHTML = errors.length ? 
         errors.map(err => '<div class="error-item">' + err + '</div>').join('') : 
-        '✅ Ошибок нет';
+        'Ошибок нет';
 }
 
 function updateUI() {

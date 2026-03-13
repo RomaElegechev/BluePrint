@@ -24,73 +24,66 @@
 
             <div class="node-category">
                 <div class="category-title">Переменные</div>
-                <div class="node-item" draggable="true" data-node-type="var-declare">
-                    Создать переменную
-                </div>
-                <div class="node-item" draggable="true" data-node-type="var-assign">
-                    Присвоить значение
-                </div>
-                <div class="node-item" draggable="true" data-node-type="var-get">
-                    Получить переменную
-                </div>
+                <div class="node-item" draggable="true" data-node-type="var-declare">Создать переменную</div>
+                <div class="node-item" draggable="true" data-node-type="var-assign">Присвоить значение</div>
+                <div class="node-item" draggable="true" data-node-type="var-get">Получить переменную</div>
             </div>
 
             <div class="node-category">
                 <div class="category-title">Арифметика</div>
-                <div class="node-item" draggable="true" data-node-type="math-add">
-                    Сложение
-                </div>
-                <div class="node-item" draggable="true" data-node-type="math-sub">
-                    Вычитание
-                </div>
-                <div class="node-item" draggable="true" data-node-type="math-mul">
-                    Умножение
-                </div>
-                <div class="node-item" draggable="true" data-node-type="math-div">
-                    Деление (целочисленное)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="math-mod">
-                    Остаток от деления
-                </div>
+                <div class="node-item" draggable="true" data-node-type="math-add">Сложение</div>
+                <div class="node-item" draggable="true" data-node-type="math-sub">Вычитание</div>
+                <div class="node-item" draggable="true" data-node-type="math-mul">Умножение</div>
+                <div class="node-item" draggable="true" data-node-type="math-div">Деление (вещественное)</div>
+                <div class="node-item" draggable="true" data-node-type="math-mod">Остаток от деления</div>
+                <div class="node-item" draggable="true" data-node-type="constant">Константа</div>
             </div>
 
             <div class="node-category">
                 <div class="category-title">Сравнение</div>
-                <div class="node-item" draggable="true" data-node-type="compare-eq">
-                    Равно (==)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="compare-neq">
-                    Не равно (!=)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="compare-gt">
-                    Больше (>)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="compare-lt">
-                    Меньше (<)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="compare-ge">
-                    Больше или равно (>=)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="compare-le">
-                    Меньше или равно (<=)
-                </div>
+                <div class="node-item" draggable="true" data-node-type="compare-eq">Равно (==)</div>
+                <div class="node-item" draggable="true" data-node-type="compare-neq">Не равно (!=)</div>
+                <div class="node-item" draggable="true" data-node-type="compare-gt">Больше (>)</div>
+                <div class="node-item" draggable="true" data-node-type="compare-lt">Меньше (<)</div>
+                <div class="node-item" draggable="true" data-node-type="compare-ge">Больше или равно (>=)</div>
+                <div class="node-item" draggable="true" data-node-type="compare-le">Меньше или равно (<=)</div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Логика</div>
+                <div class="node-item" draggable="true" data-node-type="logic-and">И (AND)</div>
+                <div class="node-item" draggable="true" data-node-type="logic-or">ИЛИ (OR)</div>
+                <div class="node-item" draggable="true" data-node-type="logic-not">НЕ (NOT)</div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Массивы</div>
+                <div class="node-item" draggable="true" data-node-type="array-declare">Создать массив</div>
+                <div class="node-item" draggable="true" data-node-type="array-get">Элемент массива</div>
+                <div class="node-item" draggable="true" data-node-type="array-set">Присвоить элементу</div>
+            </div>
+
+            <div class="node-category">
+                <div class="category-title">Строки</div>
+                <div class="node-item" draggable="true" data-node-type="string-length">Длина строки</div>
+                <div class="node-item" draggable="true" data-node-type="string-concat">Конкатенация</div>
+                <div class="node-item" draggable="true" data-node-type="string-substring">Подстрока</div>
+                <div class="node-item" draggable="true" data-node-type="to-string">В строку</div>
+                <div class="node-item" draggable="true" data-node-type="to-number">В число</div>
+                <div class="node-item" draggable="true" data-node-type="char-code">Код символа</div>
+                <div class="node-item" draggable="true" data-node-type="from-char-code">Символ из кода</div>
             </div>
 
             <div class="node-category">
                 <div class="category-title">Управление</div>
-                <div class="node-item" draggable="true" data-node-type="control-if">
-                    Если (If)
-                </div>
-                <div class="node-item" draggable="true" data-node-type="control-begin">
-                    Begin-End (Группа)
-                </div>
+                <div class="node-item" draggable="true" data-node-type="control-if">Если (If)</div>
+                <div class="node-item" draggable="true" data-node-type="control-while">Пока (While)</div>
+                <div class="node-item" draggable="true" data-node-type="control-begin">Begin-End (Группа)</div>
             </div>
 
             <div class="node-category">
                 <div class="category-title">Вывод</div>
-                <div class="node-item" draggable="true" data-node-type="print">
-                    Вывести
-                </div>
+                <div class="node-item" draggable="true" data-node-type="print">Вывести</div>
             </div>
         </div>
 

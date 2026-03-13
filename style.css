@@ -147,7 +147,6 @@ body {
     border-radius: 8px;
 }
 
-/* Стили для блоков и портов */
 .workspace-block {
     position: absolute;
     background: #ffffff;
@@ -197,7 +196,7 @@ body {
     z-index: 5;
 }
 
-.block-content input {
+.block-content input, .block-content select {
     width: 100%;
     padding: 6px;
     margin: 4px 0;
@@ -206,13 +205,22 @@ body {
     font-size: 12px;
 }
 
-.block-content input:focus {
+.block-content input[type=number] {
+    -moz-appearance: textfield;
+}
+
+.block-content input[type=number]::-webkit-inner-spin-button,
+.block-content input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.block-content input:focus, .block-content select:focus {
     outline: none;
     border-color: #2196F3;
     box-shadow: 0 0 0 2px rgba(33,150,243,0.2);
 }
 
-/* Контейнер для портов */
 .block-ports {
     position: absolute;
     top: 0;
@@ -222,7 +230,6 @@ body {
     pointer-events: none;
 }
 
-/* Стили портов */
 .port {
     position: absolute;
     width: 16px;
@@ -259,15 +266,16 @@ body {
     top: 50%;
 }
 
-/* Стили для If-блока */
-.if-condition {
+.if-condition, .while-condition {
     background: #e3f2fd;
     padding: 8px;
     border-radius: 4px;
     margin-bottom: 8px;
+    font-size: 12px;
+    color: #0d47a1;
 }
 
-.if-then {
+.if-then, .while-body {
     background: #e8f5e8;
     padding: 8px;
     border-radius: 4px;
@@ -283,7 +291,7 @@ body {
     min-height: 50px;
 }
 
-.then-label, .else-label {
+.then-label, .else-label, .body-label {
     font-weight: bold;
     margin-bottom: 4px;
     font-size: 12px;
@@ -297,7 +305,10 @@ body {
     color: #f44336;
 }
 
-/* Стили для Begin-End блока */
+.body-label {
+    color: #2e7d32;
+}
+
 .begin-blocks {
     background: #f5f5f5;
     padding: 8px;
@@ -311,7 +322,6 @@ body {
     margin: 8px 0;
 }
 
-/* SVG слой для линий */
 .connections-svg {
     position: absolute;
     top: 0;
@@ -341,7 +351,6 @@ body {
     stroke: #999;
 }
 
-/* Информационная панель */
 .info-panel {
     width: 250px;
     background: #f5f5f5;
@@ -440,15 +449,40 @@ body {
     background: #f0f8ff;
 }
 
-/* Стили для вложенных блоков */
-.then-blocks, .else-blocks, .begin-blocks {
-    position: relative;
-}
-
 .then-blocks .workspace-block,
 .else-blocks .workspace-block,
-.begin-blocks .workspace-block {
+.begin-blocks .workspace-block,
+.body-blocks .workspace-block {
     position: relative;
     margin: 10px 0;
     width: 180px;
+}
+
+@media (max-width: 800px) {
+    .main-area {
+        flex-direction: column;
+    }
+    .node-palette {
+        width: 100%;
+        height: 200px;
+        overflow-y: auto;
+    }
+    .info-panel {
+        width: 100%;
+    }
+}
+
+@media (max-width: 450px) {
+    .top-bar {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .workspace-block {
+        width: 180px;
+        font-size: 11px;
+    }
+    .controls {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
 }
